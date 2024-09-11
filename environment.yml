@@ -1,0 +1,26 @@
+name: dtns
+channels:
+    - pytorch
+    - defaults
+    - anaconda
+dependencies:
+    - pytorch==1.12.1
+    - torchvision==0.13.1
+    - cudatoolkit=10.2
+    - jupyter
+    - ipykernel
+    - numpy
+    - pandas
+    - matplotlib
+    - scipy
+    - scikit-learn
+    - scikit-image
+    - tqdm
+    - h5py
+    - pip
+    - pip:
+        - yt-dlp
+        - librosa
+        - music21
+        - mir_eval
+        - git+https://github.com/CPJKU/madmom
