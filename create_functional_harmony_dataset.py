@@ -91,31 +91,26 @@ def load_artist_database(artist: str):
     return load_hooktheory_database(wanted_artists=[artist])
 
 
-def chunkify(arr: np.ndarray, window_size: int, hop_size: int, axis: int = 0, padding_value: float = 0) -> List[np.ndarray]:
+def chunkify(arr: np.ndarray, window_size: int, hop_size: int, padding_value: float = 0) -> List[np.ndarray]:
     '''
     Helper function to yield chunks of data defined by window_size and hop_size.
 
     Arguments
     ---------
-        - arr (np.ndarray): numpy array where axis represents the sequence length information (where the data will be chunkified)
+        - arr (np.ndarray): numpy array where axis=1 is the sequence length information (where the data will be chunkified)
         - window_size (int): window size to be used.
         - hop_size (int): hop size to be used.
-        - axis (int, default=0): axis which corresponds to sequence length information (where the data will be chunkified) 
         - padding_value (float, default=0): padding value used to fill the chunk size if size is less then window size
     '''
 
     chunks = []
-    for i in range(0, arr.shape[axis], hop_size):
-        if axis == 0:
-            chunk = arr[i:i+window_size]
-        else:
-            chunk = arr[:, i:i+window_size]
+    for i in range(0, arr.shape[1], hop_size):
+        chunk = arr[:, i:i+window_size]
 
         # Applying padding accordingly
-        if chunk.shape[axis] != window_size:
-            pad = window_size - chunk.shape[axis]
-            pad_width = ((0, pad), (0, 0)) if axis == 0 else ((0, 0), (0, pad))
-            chunk = np.pad(chunk, pad_width, constant_values=padding_value)
+        if chunk.shape[1] != window_size:
+            pad = window_size - chunk.shape[1]
+            chunk = np.pad(chunk, ((0, 0), (0, pad)), constant_values=padding_value)
 
         chunks.append(chunk)
 
@@ -147,57 +142,6 @@ def compute_log_quarter_tone_spectrogram(wave):
     log_quarter_tone = dcp_flatten(spec_frames(spec_signal(log_quarter_tone)))
     
     return log_quarter_tone
-
-
-def compute_bass_and_harmony_labels(song, num_frames):
-    beats = song['alignment']['beats']
-    times = song['alignment']['times']
-    times = [times[i] - times[0] for i in range(len(times))]  # making times start in 0
-
-    beat_to_time_fn = interp1d(beats, times, kind='linear', fill_value='extrapolate')
-    time_to_frame_fn = lambda time: librosa.time_to_frames(time, sr=SAMPLING_RATE, hop_length=DEEP_CHROMA_HOP_LENGTH)
-    
-    bass_chroma = np.zeros((12, num_frames), dtype=np.float32)
-    harmony_chroma = np.zeros((12, num_frames), dtype=np.float32)
-    
-    for chord in song['harmony']:
-        onset = time_to_frame_fn(beat_to_time_fn(chord['onset']))
-        offset = time_to_frame_fn(beat_to_time_fn(chord['offset']))
-    
-        bass_pc = chord['bass_pitch_class']
-        bass_chroma[bass_pc, onset:offset] = 1.0
-        
-        root_pc = chord['root_pitch_class']
-        interval_semitones = chord['chord_interval_semitones']
-        chord_pitch_classes = np.cumsum([root_pc] + interval_semitones) % 12
-        harmony_chroma[chord_pitch_classes, onset:offset] = 1.0
-
-    return bass_chroma.T, harmony_chroma.T
-
-
-def process_harmonybass_data(database, dataset_name, split):
-    datapath = f'datasets/{dataset_name}.h5'
-
-    print(f'Processing {split} database')
-    for song_id, song in tqdm(database.items()):
-        with h5py.File(AUDIOS_DATAPATH, 'r') as fp:
-            wave = fp[song_id][:]
-            spec = compute_log_quarter_tone_spectrogram(wave)
-            bass_chroma, harmony_chroma = compute_bass_and_harmony_labels(song, spec.shape[0])
-
-        spec_chunks = chunkify(spec, axis=0, window_size=128, hop_size=128, padding_value=0)
-        bass_chunks = chunkify(bass_chroma, axis=0, window_size=128, hop_size=128, padding_value=0)
-        harmony_chunks = chunkify(harmony_chroma, axis=0, window_size=128, hop_size=128, padding_value=0)
-
-        assert len(spec_chunks) == len(bass_chunks), f'{len(spec_chunks)} != {len(bass_chunks)}'
-        assert len(spec_chunks) == len(harmony_chunks), f'{len(spec_chunks)} != {len(harmony_chunks)}'
-
-        num_chunks = len(spec_chunks)
-        with h5py.File(datapath, 'a') as fp:
-            for chunk_idx in range(num_chunks):
-                fp.create_dataset(f'harmonybass/{split}/{song_id}__{chunk_idx}/spec', data=spec_chunks[chunk_idx], compression='gzip')
-                fp.create_dataset(f'harmonybass/{split}/{song_id}__{chunk_idx}/bass_chroma', data=bass_chunks[chunk_idx], compression='gzip')
-                fp.create_dataset(f'harmonybass/{split}/{song_id}__{chunk_idx}/harmony_chroma', data=harmony_chunks[chunk_idx], compression='gzip')
 
 
 def compute_harmony_only_chroma(wave, alignment):
@@ -334,21 +278,21 @@ def process_functional_harmony_data(database, dataset_name, split):
         harmonybass_key_similarities = convert_to_label_res(harmonybass_key_similarities, song['alignment'])
         
         # Creating data chunks for key similarities (label resolution)
-        madmom_key_similarities_chunks = chunkify(madmom_key_similarities, axis=1, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
+        madmom_key_similarities_chunks = chunkify(madmom_key_similarities, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
                                                   hop_size=HOP_SIZE_IN_BEATS * LABEL_RES, padding_value=0)
-        harmonybass_key_similarities_chunks = chunkify(harmonybass_key_similarities, axis=1, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
+        harmonybass_key_similarities_chunks = chunkify(harmonybass_key_similarities, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
                                                        hop_size=HOP_SIZE_IN_BEATS * LABEL_RES, padding_value=0)
 
         # Creating data chunks for bass and harmony chromagrams
-        bass_chroma_chunks = chunkify(bass_chroma, axis=1, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
+        bass_chroma_chunks = chunkify(bass_chroma, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
                                       hop_size=HOP_SIZE_IN_BEATS * INPUT_RES, padding_value=0)
-        harmony_chroma_chunks = chunkify(harmony_chroma, axis=1, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
+        harmony_chroma_chunks = chunkify(harmony_chroma, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
                                       hop_size=HOP_SIZE_IN_BEATS * INPUT_RES, padding_value=0)
 
         # Creating data chunks for vanilla data (madmom chroma and labels)
-        madmom_chroma_chunks = chunkify(madmom_chroma, axis=1, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
+        madmom_chroma_chunks = chunkify(madmom_chroma, window_size=WINDOW_SIZE_IN_BEATS * INPUT_RES,
                                         hop_size=HOP_SIZE_IN_BEATS * INPUT_RES, padding_value=0)
-        label_indices_chunks = chunkify(label_indices, axis=1, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
+        label_indices_chunks = chunkify(label_indices, window_size=WINDOW_SIZE_IN_BEATS * LABEL_RES,
                                         hop_size=HOP_SIZE_IN_BEATS * LABEL_RES, padding_value=-1)
 
         num_chunks = len(bass_chroma_chunks)
@@ -372,14 +316,6 @@ if __name__ == '__main__':
 
     database = load_artist_database(args.artist)
     dataset_name = args.artist.replace('-', '_') + '_dataset'
-
-    # Processing HarmonyBass Chroma Network related dataset
-    if args.no_split:
-        process_harmonybass_data(database, dataset_name, split='whole')
-    else:
-        split_databases = train_test_split_database(database)
-        for db, split in zip(split_databases, ['train', 'valid', 'test']):
-            process_harmonybass_data(db, dataset_name, split=split)
 
     # Processing Functional Harmony related dataset
     if args.no_split:
