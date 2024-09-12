@@ -20,6 +20,9 @@ Make sure to install the required dependencies specified in the `environment.yml
    conda activate dtns
    ```
 
+### Defining data constants
+Under `source/data/constants.py` you can change `AUDIOS_DATAPATH` and `PROCESSED_HOOKTHEORY_DATAPATH ` values to reflect the datapath in which your audios are stored (needs to be in H5PY format) and the processed HookTheory JSON file.
+
 ## Model pre-trained weights
 
 The model weights with results reported in the paper can be found at `pretrained/` folder.
@@ -60,7 +63,7 @@ python create_functional_harmony_dataset.py --artist <ARTIST> [--no-split]
 
 ## Training Models
 ### HarmonyBass Chroma Network (HBCN)
-You can re-train the HarmonyBass Chroma Network (HBCN) using the `train_hbcn.py script`. This script only requires the dataset name as an argument.
+You can re-train the HarmonyBass Chroma Network (HBCN) using the `train_hbcn.py` script. This script only requires the dataset name as an argument.
 
 ```bash
 # Usage example
